@@ -1,0 +1,16 @@
+main:
+  build: .
+  environment:
+      PYTHONUNBUFFERED: 0
+  volumes:
+   - .:/opt/code
+  links:
+   - elasticsearch
+# use with axmeta (aexea company internal container)
+#  external_links:
+#   - axmeta_elasticsearch_1:elasticsearch
+elasticsearch:
+  image: aexea/elasticsearch
+  ports:
+   - "9200:9200"
+   - "9300:9300"
