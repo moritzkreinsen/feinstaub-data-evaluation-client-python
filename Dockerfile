@@ -8,4 +8,4 @@ WORKDIR /opt/code
 
 RUN pip3 install -r /opt/code/requirements.txt
 
-CMD python3 client.py --sensor_id=61
+CMD bash start.sh
