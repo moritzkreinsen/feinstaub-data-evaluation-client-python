@@ -1,21 +1,85 @@
-import requests
 from config import API_TOKEN
+from contextlib import suppress
+from decimal import Decimal
+from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import NotFoundError
+from elasticsearch_dsl import Search
+import click
+import requests
 
-# TODO
-# - create index in elastic
-# - add schema for dataset using elasticsearch_dsl
-# - add every sensordata-set with values normalized to fields to elastic
-# - before doing http-call get newest dataset from elastic to speedup query to feinstaub-api by using timestamp_newer-GET-parameter
+
+es = Elasticsearch(["elasticsearch"])
+ES_INDEX_NAME = "feinstaub"
 
 
-def get_data():
+def delete_element_in_aggregator(_id):
+    with suppress(ValueError, NotFoundError):
+        es.delete(
+            index=ES_INDEX_NAME,
+            id=_id,
+            doc_type="sensordata",
+        )
+
+
+def add_element_to_elastic(element):
+    delete_element_in_aggregator(element.get('id'))
+
+    if not es.indices.exists(index=ES_INDEX_NAME):
+        es.indices.create(index=ES_INDEX_NAME)
+
+    es.index(
+        index=ES_INDEX_NAME,
+        id=element.get('id'),
+        doc_type="sensor_data",
+        body=element,
+    )
+
+
+def get_newest(sensor_id):
+    # FIXME: doc_type doesn't work :(
+    #        .query("match", doc_type="sensordata")\
+    s = Search(using=es, index=ES_INDEX_NAME)\
+        .query("match", sensor_id=sensor_id)\
+        .sort("-timestamp")
+    response = s.execute()
+    if response.hits:
+        return response.hits[0].timestamp
+    return None
+
+
+@click.command()
+@click.option('--sensor_id')
+def get_data(sensor_id):
+    sensor_id = int(sensor_id)
     header = {'Authorization': 'Token ' + API_TOKEN}
     session = requests.Session()
-    url = "https://api.dusti.xyz/v1/node/"
-    r = session.get(url, headers=header)
-    for node in r.json():
-        for sensor in node.get('sensors'):
-            print("sensor_id: {}".format(sensor.get('id')))
+    url = "https://api.dusti.xyz/v1/data/"
+    params = {
+        'sensor': sensor_id,
+        'page_size': 100
+    }
+    timestamp = get_newest(sensor_id)
+    if timestamp:
+        params.update({
+            'timestamp_newer': timestamp
+        })
+    while url:
+        r = session.get(url, headers=header, params=params)
+        data = r.json()
+        url = data.get('next')
+        if 'results' not in data:
+            break
+        for sensordata in data.get('results'):
+            values = {}
+            for value in sensordata.get('sensordatavalues'):
+                values[value['value_type']] = Decimal(value['value'])
+            element = {
+                'id': sensordata.get('id'),
+                'sensor_id': sensor_id,
+                'timestamp': sensordata.get('timestamp'),
+                'values': values
+            }
+            add_element_to_elastic(element)
 
 
 if __name__ == '__main__':
