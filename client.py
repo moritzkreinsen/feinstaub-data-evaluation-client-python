@@ -1,6 +1,6 @@
+import decimal
 from config import API_TOKEN
 from contextlib import suppress
-from decimal import Decimal
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 from elasticsearch_dsl import Search
@@ -83,14 +83,19 @@ def _get_data(sensor_id):
         for sensordata in data.get('results'):
             values = {}
             for value in sensordata.get('sensordatavalues'):
-                values[value['value_type']] = Decimal(value['value'])
-            element = {
-                'id': sensordata.get('id'),
-                'sensor_id': sensor_id,
-                'timestamp': sensordata.get('timestamp'),
-                'values': values
-            }
-            add_element_to_elastic(element)
+                try:
+                    values[value['value_type']] = decimal.Decimal(value['value'])
+                except decimal.InvalidOperation:
+                    values = {}
+                    break
+            if values:
+                element = {
+                    'id': sensordata.get('id'),
+                    'sensor_id': sensor_id,
+                    'timestamp': sensordata.get('timestamp'),
+                    'values': values
+                }
+                add_element_to_elastic(element)
 
 
 def update_list_of_ppds():
