@@ -49,7 +49,18 @@ def get_newest(sensor_id):
 
 @click.command()
 @click.option('--sensor_id')
-def get_data(sensor_id):
+@click.option('--allsensors/--not-allsensors', default=False)
+def get_data(allsensors, sensor_id=0):
+    if allsensors:
+        with open("sensor_list", "r") as fp:
+            for line in fp.readlines():
+                _get_data(line.strip())
+        return
+    else:
+        _get_data(sensor_id)
+
+
+def _get_data(sensor_id):
     sensor_id = int(sensor_id)
     header = {'Authorization': 'Token ' + API_TOKEN}
     session = requests.Session()
@@ -82,5 +93,23 @@ def get_data(sensor_id):
             add_element_to_elastic(element)
 
 
+def update_list_of_ppds():
+    header = {'Authorization': 'Token ' + API_TOKEN}
+    session = requests.Session()
+    url = "https://api.dusti.xyz/v1/node/"
+    params = {}
+    r = session.get(url, headers=header, params=params)
+    data = r.json()
+    list_of_ppds = []
+    for node in data:
+        for sensor in node.get('sensors'):
+            sensor_type = sensor.get("sensor_type", {})
+            if sensor_type.get('name') == "PPD42NS":
+                list_of_ppds.append(sensor.get('id'))
+    with open("sensor_list", "w") as fp:
+        for ppd in list_of_ppds:
+            fp.write("{}\n".format(ppd))
+
 if __name__ == '__main__':
+#    update_list_of_ppds()
     get_data()
