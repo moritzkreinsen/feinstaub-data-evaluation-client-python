@@ -1,8 +1,9 @@
+import json
 import decimal
 from config import API_TOKEN
 from contextlib import suppress
 from elasticsearch import Elasticsearch
-from elasticsearch.exceptions import NotFoundError
+from elasticsearch.exceptions import NotFoundError, RequestError
 from elasticsearch_dsl import Search
 import click
 import requests
@@ -27,12 +28,15 @@ def add_element_to_elastic(element):
     if not es.indices.exists(index=ES_INDEX_NAME):
         es.indices.create(index=ES_INDEX_NAME)
 
-    es.index(
-        index=ES_INDEX_NAME,
-        id=element.get('id'),
-        doc_type="sensor_data",
-        body=element,
-    )
+    try:
+        es.index(
+            index=ES_INDEX_NAME,
+            id=element.get('id'),
+            doc_type="sensor_data",
+            body=element,
+        )
+    except RequestError:
+        pass
 
 
 def get_newest(sensor_id):
@@ -76,7 +80,10 @@ def _get_data(sensor_id):
         })
     while url:
         r = session.get(url, headers=header, params=params)
-        data = r.json()
+        try:
+            data = r.json()
+        except json.decoder.JSONDecodeError:
+            break
         url = data.get('next')
         if 'results' not in data:
             break
